@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useEffect } from 'react';
 import { PlanRow, AchievedRow, KPIRow } from '../types';
 import { calculateTimeGone, formatNumber, getUniqueValues, formatCurrency } from '../utils';
@@ -680,16 +679,29 @@ export default function EVPMDashboard({ plans, achievements, onRefresh, lastUpda
           return acc;
       }, {});
 
-      const rawList = Object.values(groups).filter((item: DebtGroup) => item.Total > 0);
+      // NEW LOGIC: Filter based on Debt Metric (Due/Overdue/All)
+      const rawList = Object.values(groups).filter((item: DebtGroup) => {
+          if (debtMetric === 'Due') {
+              return item.Due > 0;
+          }
+          if (debtMetric === 'Overdue') {
+              return item.Overdue > 0;
+          }
+          return item.Total > 0; // Default (All)
+      });
 
-      // NEW: Calculate Grand Total for percentage calculation
-      const grandTotal = rawList.reduce((sum, item: DebtGroup) => sum + item.Total, 0);
+      // NEW: Calculate Grand Total for percentage calculation based on the selected metric
+      let metricKey: 'Total' | 'Due' | 'Overdue' = 'Total';
+      if (debtMetric === 'Due') metricKey = 'Due';
+      else if (debtMetric === 'Overdue') metricKey = 'Overdue';
+
+      const grandTotal = rawList.reduce((sum, item: DebtGroup) => sum + item[metricKey], 0);
 
       return rawList
              .map((item: DebtGroup) => ({
                  ...item,
                  // Calculate global share percentage (share of grand total)
-                 GlobalShare: grandTotal > 0 ? (item.Total / grandTotal) * 100 : 0
+                 GlobalShare: grandTotal > 0 ? (item[metricKey] / grandTotal) * 100 : 0
              }))
              .sort((a, b) => {
                  // Sort based on selected metric
