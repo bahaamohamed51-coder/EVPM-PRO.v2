@@ -118,27 +118,28 @@ const StatCard = ({ title, actual, plan, prefix = '', customBg = 'bg-white', cus
     const titleColor = isGSV ? 'text-purple-100' : 'text-blue-800'; 
     const planValueClass = isGSV ? 'text-sm md:text-base font-bold text-purple-200/90' : 'text-sm md:text-base font-bold text-orange-600'; // Bigger plan numbers
 
-    // --- UPDATED COLOR LOGIC BASED ON REQUEST ---
-    // Red: Achievement < Time Gone - 10
-    // Yellow: Achievement < Time Gone AND Achievement >= Time Gone - 10
-    // Green: Achievement >= Time Gone
+    // --- UPDATED COLOR LOGIC ---
+    // The target is Time Gone, but capped at 80% max.
+    // If Time Gone is > 80%, the comparison target stays at 80%.
+    const effectiveTarget = Math.min(timeGone, 80);
+    const gap = effectiveTarget - percent;
+
+    let statusColor = 'green';
     
-    const gap = timeGone - percent;
-    let statusColor = 'green'; // Default
+    // Logic:
+    // 1. Green: Achievement >= Effective Target (max 80%)
+    // 2. Yellow: Achievement is within 10% of Effective Target (e.g. 70-80 when full time)
+    // 3. Red: Achievement is more than 10% behind Effective Target (e.g. <70 when full time)
     
-    if (gap >= 10) {
-        statusColor = 'red';
-    } else if (gap > 0) {
-        // Gap is between 0 and 10 (Exclusive of 0, Inclusive of almost 10)
-        // Means Achievement is less than Time Gone, but not by 10%
+    if (gap <= 0) {
+        statusColor = 'green';
+    } else if (gap <= 10) {
         statusColor = 'yellow';
     } else {
-        // Gap <= 0 means Percent >= TimeGone
-        statusColor = 'green';
+        statusColor = 'red';
     }
 
     // Define Styles based on status
-    // MODIFIED: Yellow uses standard yellow colors instead of amber
     const styles = {
         green: {
             badge: 'bg-emerald-500/20 text-emerald-600',
@@ -147,9 +148,9 @@ const StatCard = ({ title, actual, plan, prefix = '', customBg = 'bg-white', cus
             badgeGSV: 'bg-emerald-500 text-white shadow-sm shadow-emerald-900/20' 
         },
         yellow: {
-            badge: 'bg-yellow-100 text-yellow-700', // Changed from amber-600
-            fill: 'bg-yellow-500', // Changed from amber-500
-            badgeGSV: 'bg-yellow-500 text-white shadow-sm shadow-yellow-900/20' // Changed from amber-500/amber-900
+            badge: 'bg-yellow-100 text-yellow-700', 
+            fill: 'bg-yellow-500', 
+            badgeGSV: 'bg-yellow-500 text-white shadow-sm shadow-yellow-900/20' 
         },
         red: {
             badge: 'bg-red-500/10 text-red-500',
@@ -695,13 +696,14 @@ export default function EVPMDashboard({ plans, achievements, onRefresh, lastUpda
       if (debtMetric === 'Due') metricKey = 'Due';
       else if (debtMetric === 'Overdue') metricKey = 'Overdue';
 
-      const grandTotal = rawList.reduce((sum, item: DebtGroup) => sum + item[metricKey], 0);
+      // Explicit cast to number to ensure TS is happy
+      const grandTotal: number = rawList.reduce((sum: number, item: DebtGroup) => sum + ((item as any)[metricKey] as number), 0);
 
       return rawList
              .map((item: DebtGroup) => ({
                  ...item,
                  // Calculate global share percentage (share of grand total)
-                 GlobalShare: grandTotal > 0 ? (item[metricKey] / grandTotal) * 100 : 0
+                 GlobalShare: grandTotal > 0 ? (((item as any)[metricKey] as number) / grandTotal) * 100 : 0
              }))
              .sort((a, b) => {
                  // Sort based on selected metric
