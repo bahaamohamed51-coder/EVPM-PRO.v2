@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import { User, Job, AppConfig, KPIRow } from '../types';
 import { Briefcase, User as UserIcon, Lock, LogIn, Database, SkipForward, Search, Download } from 'lucide-react';
@@ -16,7 +15,7 @@ interface LoginProps {
 }
 
 export default function Login({ onLogin, users, data, jobs, config, setConfig, installPrompt, onInstall }: LoginProps) {
-  const [roleType, setRoleType] = useState(''); // RSM, SM, ASM, T.L Name, SALESMANNAMEA, Staff
+  const [roleType, setRoleType] = useState(''); // RSM, SM, ASM, T.L Name, SALESMANNAMEA, Director
   const [selectedIdentity, setSelectedIdentity] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -34,10 +33,10 @@ export default function Login({ onLogin, users, data, jobs, config, setConfig, i
   // Team Leader List (Unique Values)
   const tlList = useMemo(() => getUniqueValues(data, 'T.L Name'), [data]);
 
-  // Staff List (From Users Sheet)
-  const staffList = useMemo(() => {
+  // Director List (From Users Sheet) - Filter by JobTitle 'Director'
+  const directorList = useMemo(() => {
     return users
-      .filter(u => u.jobTitle === 'Staff')
+      .filter(u => u.jobTitle === 'Director')
       .map(u => u.name || u.username);
   }, [users]);
   
@@ -59,23 +58,23 @@ export default function Login({ onLogin, users, data, jobs, config, setConfig, i
     return Array.from(unique.values());
   }, [data]);
 
-  // General Filter for Searchable Dropdowns (ASM & Salesman & Staff & Admin & TL)
+  // General Filter for Searchable Dropdowns
   const filteredList = useMemo(() => {
     if (!searchTerm) {
         if (roleType === 'ASM') return asmList;
         if (roleType === 'SALESMANNAMEA') return salesmanList;
         if (roleType === 'T.L Name') return tlList;
-        if (roleType === 'Staff') return staffList;
+        if (roleType === 'Director') return directorList;
         if (roleType === 'Admin') return adminList;
         return [];
     }
     const source = roleType === 'ASM' ? asmList : 
-                   (roleType === 'Staff' ? staffList : 
+                   (roleType === 'Director' ? directorList : 
                    (roleType === 'Admin' ? adminList : 
                    (roleType === 'T.L Name' ? tlList : salesmanList)));
     // @ts-ignore
     return source.filter(s => s && s.toLowerCase().includes(searchTerm.toLowerCase()));
-  }, [asmList, salesmanList, staffList, adminList, tlList, searchTerm, roleType]);
+  }, [asmList, salesmanList, directorList, adminList, tlList, searchTerm, roleType]);
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -124,8 +123,8 @@ export default function Login({ onLogin, users, data, jobs, config, setConfig, i
         }
     }
 
-    // 3. Direct Username Mapping (ASM, Staff, Admin)
-    if (roleType === 'ASM' || roleType === 'Staff' || roleType === 'Admin') {
+    // 3. Direct Username Mapping (ASM, Director, Admin)
+    if (roleType === 'ASM' || roleType === 'Director' || roleType === 'Admin') {
         targetUsername = selectedIdentity;
     }
 
@@ -212,12 +211,12 @@ export default function Login({ onLogin, users, data, jobs, config, setConfig, i
                                 className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl px-4 py-3 text-right pr-10 focus:border-blue-500 outline-none appearance-none cursor-pointer font-bold text-slate-700 transition-all"
                             >
                                 <option value="">اختر الوظيفة</option>
+                                <option value="Director">Director</option>
                                 <option value="RSM">RSM (Regional Manager)</option>
                                 <option value="SM">SM (Sales Manager)</option>
                                 <option value="ASM">ASM / Distributor</option>
                                 <option value="T.L Name">Team Leader</option>
                                 <option value="SALESMANNAMEA">Sales Representative</option>
-                                <option value="Staff">موظف (Staff)</option>
                                 <option value="Admin">System Administrator</option>
                             </select>
                             <Briefcase className="absolute right-3 top-3.5 text-slate-400" size={18} />
@@ -232,13 +231,13 @@ export default function Login({ onLogin, users, data, jobs, config, setConfig, i
                                  roleType === 'SM' ? 'اسم مدير المبيعات' : 
                                  roleType === 'ASM' ? 'اسم الفرع / الموزع' : 
                                  roleType === 'T.L Name' ? 'اسم التيم ليدر' :
-                                 roleType === 'Staff' ? 'اسم الموظف' : 
+                                 roleType === 'Director' ? 'Director Name' : 
                                  roleType === 'Admin' ? 'اسم المستخدم (Admin)' : 'كود / اسم المندوب'}
                              </label>
                              
                              <div className="relative">
-                                {(roleType === 'SALESMANNAMEA' || roleType === 'ASM' || roleType === 'Staff' || roleType === 'Admin' || roleType === 'T.L Name') ? (
-                                    // Searchable Dropdown for Salesman OR ASM OR Staff OR Admin OR TL
+                                {(roleType === 'SALESMANNAMEA' || roleType === 'ASM' || roleType === 'Director' || roleType === 'Admin' || roleType === 'T.L Name') ? (
+                                    // Searchable Dropdown for Salesman OR ASM OR Director OR Admin OR TL
                                     <div className="relative">
                                         <input 
                                             type="text" 
