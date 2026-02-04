@@ -139,9 +139,10 @@ const App: React.FC = () => {
   // Helper to strip system fields from user object before filtering
   const getSafeUserFilters = (user: User) => {
     if (user.role === 'admin') return {}; 
-    // Allow 'Staff' job title to view all data (same as admin logic for filters)
-    // Updated to also allow 'Director' to have full view
-    if (user.jobTitle === 'Staff' || user.jobTitle === 'Director') return {};
+    
+    // Fix: Case insensitive check for special roles
+    const title = String(user.jobTitle || '').trim().toLowerCase();
+    if (title === 'staff' || title === 'director') return {};
 
     const allowedKeys = ['Region', 'RSM', 'SM', 'Dist Name', 'T.L Name', 'Channel', 'SALESMANNO'];
     const filters: any = {};
