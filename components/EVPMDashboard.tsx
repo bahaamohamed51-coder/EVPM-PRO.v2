@@ -1,10 +1,10 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { PlanRow, AchievedRow, KPIRow } from '../types';
 import { calculateTimeGone, formatNumber, getUniqueValues, formatCurrency } from '../utils';
-import { Filter, RefreshCw, ChevronDown, Calendar, TrendingUp, TrendingDown, Clock, Activity, LineChart as IconLineChart, XCircle, AlertCircle, Users, Banknote, Layers } from 'lucide-react';
+import { Filter, RefreshCw, ChevronDown, Calendar, TrendingUp, TrendingDown, Clock, Activity, LineChart as IconLineChart, XCircle, AlertCircle, Users, Banknote, Layers, Check } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, 
-  AreaChart, Area, CartesianGrid, Cell, PieChart, Pie, Legend, LabelList, LineChart, Line 
+  AreaChart, Area, CartesianGrid, Cell, PieChart, Pie, Legend, LabelList, LineChart, Line, ReferenceLine 
 } from 'recharts';
 
 interface Props {
@@ -13,6 +13,14 @@ interface Props {
   onRefresh: () => void;
   lastUpdated?: string;
   userFilters?: any;
+}
+
+interface DebtGroup {
+  name: string;
+  fullKey: string;
+  Due: number;
+  Overdue: number;
+  Total: number;
 }
 
 // Redesigned Time Pie Widget (Enhanced Visuals)
@@ -275,18 +283,100 @@ const KpiFilterButtons = ({ current, onChange }: { current: string, onChange: (v
     );
 };
 
+// Custom Multi-Select Component
+const MultiSelectDropdown = ({ label, options, selected, onChange }: { label: string, options: string[], selected: string[], onChange: (val: string[]) => void }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const toggleOption = (opt: string) => {
+    if (selected.includes(opt)) {
+        onChange(selected.filter(s => s !== opt));
+    } else {
+        onChange([...selected, opt]);
+    }
+  };
+
+  const isAll = selected.length === 0;
+
+  return (
+    <div className="relative group" ref={dropdownRef}>
+      <button 
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 text-[11px] font-bold py-2.5 px-3 rounded-xl outline-none focus:border-blue-500 transition-all cursor-pointer shadow-sm flex items-center justify-between"
+      >
+        {/* Label to the Left, Value/Placeholder to the Right (handled by flex-row in RTL or just text alignment) */}
+        {/* To force "Start from Left" in RTL, we use text-left */}
+        <span className="text-left w-full truncate pr-4">
+             {label}: {isAll ? 'All' : `${selected.length} Selected`}
+        </span>
+        <ChevronDown size={14} className="text-slate-400 absolute right-3 pointer-events-none"/>
+      </button>
+
+      {isOpen && (
+        <div className="absolute z-50 w-full bg-white shadow-xl rounded-xl mt-1 max-h-60 overflow-y-auto border border-slate-100 animate-in fade-in zoom-in-95 duration-100">
+           <div 
+             className="p-2.5 hover:bg-slate-50 cursor-pointer text-xs font-bold text-slate-700 border-b border-slate-50 flex items-center gap-2"
+             onClick={() => onChange([])}
+           >
+              <div className={`w-4 h-4 rounded border flex items-center justify-center ${isAll ? 'bg-blue-500 border-blue-500' : 'border-slate-300'}`}>
+                  {isAll && <Check size={10} className="text-white"/>}
+              </div>
+              <span>All</span>
+           </div>
+           {options.map(opt => {
+             const isSelected = selected.includes(opt);
+             return (
+                <div 
+                    key={opt} 
+                    className="p-2.5 hover:bg-slate-50 cursor-pointer text-xs font-bold text-slate-700 border-b border-slate-50 last:border-0 flex items-center gap-2"
+                    onClick={() => toggleOption(opt)}
+                >
+                    <div className={`w-4 h-4 rounded border flex items-center justify-center ${isSelected ? 'bg-blue-500 border-blue-500' : 'border-slate-300'}`}>
+                        {isSelected && <Check size={10} className="text-white"/>}
+                    </div>
+                    <span>{opt}</span>
+                </div>
+             );
+           })}
+        </div>
+      )}
+    </div>
+  );
+};
+
 export default function EVPMDashboard({ plans, achievements, onRefresh, lastUpdated, userFilters = {} }: Props) {
-  // Global Filters
-  const [activeFilters, setActiveFilters] = useState({
-    Region: '',
-    RSM: '',
-    SM: '',
-    'Dist Name': '',
-    'T.L Name': '',      // New Filter
-    SALESMANNAMEA: '',   // New Filter
-    Channel: '',
-    ...userFilters
-  });
+  // Global Filters - Now Arrays for Multi-Select
+  // If userFilters provides a string (e.g. Salesman restricted view), we wrap it in array
+  const initialFilters = useMemo(() => {
+      const init: any = {
+        Region: [],
+        RSM: [],
+        SM: [],
+        'Dist Name': [],
+        'T.L Name': [],      
+        SALESMANNAMEA: [],
+        Channel: []
+      };
+      
+      Object.keys(userFilters).forEach(key => {
+          if (userFilters[key]) {
+              init[key] = [userFilters[key]];
+          }
+      });
+      return init;
+  }, [userFilters]);
+
+  const [activeFilters, setActiveFilters] = useState<any>(initialFilters);
 
   // Date Filter State
   const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().split('T')[0]);
@@ -349,9 +439,15 @@ export default function EVPMDashboard({ plans, achievements, onRefresh, lastUpda
   const [distKpi, setDistKpi] = useState<string>('GSV'); 
   const [salesmanKpi, setSalesmanKpi] = useState<string>('GSV'); // New State for Salesman Chart
 
-  // 2. FILTER LOGIC
+  // 2. FILTER LOGIC - UPDATED FOR MULTI-SELECT
   const filteredPlans = useMemo(() => {
-    return plans.filter(row => Object.entries(activeFilters).every(([key, val]) => !val || String(row[key as keyof PlanRow]) === String(val)));
+    return plans.filter(row => 
+        Object.entries(activeFilters).every(([key, vals]: [string, any]) => {
+            if (!vals || vals.length === 0) return true; // No filter selected = All
+            // Check if row value is included in selected values
+            return vals.includes(String(row[key as keyof PlanRow]));
+        })
+    );
   }, [plans, activeFilters]);
 
   // 3. DATA MERGING (Using Effective Date)
@@ -375,18 +471,13 @@ export default function EVPMDashboard({ plans, achievements, onRefresh, lastUpda
   }, [filteredPlans, achievements, effectiveDate]);
 
   // SPECIAL: Data Source for Salesman Performance Chart
-  // If user is Salesman: Show Peer Data (Same TL)
-  // Else: Show currentViewData (which respects ASM/TL/RSM filters)
   const salesmanChartSource = useMemo(() => {
     if (isSalesman && userFilters['SALESMANNO']) {
-        // Find this salesman's TL from the full 'plans' list
         const me = plans.find(p => String(p.SALESMANNO).trim() === String(userFilters['SALESMANNO']).trim());
         if (me && me['T.L Name']) {
             const myTL = me['T.L Name'];
-            // Get all salesmen under this TL
             const peerPlans = plans.filter(p => p['T.L Name'] === myTL);
             
-            // Merge with achievements
             return peerPlans.map(plan => {
                 const planId = String(plan.SALESMANNO).trim();
                 const ach = achievements.find(a => 
@@ -404,13 +495,11 @@ export default function EVPMDashboard({ plans, achievements, onRefresh, lastUpda
             });
         }
     }
-    // Default for Managers
     return currentViewData;
   }, [isSalesman, userFilters, plans, achievements, effectiveDate, currentViewData]);
 
-  // 4. DATA FOR LINE CHART (Daily Progress) - WITH TARGET LINE & FILTERED BY DATE
+  // 4. DATA FOR LINE CHART (Daily Progress)
   const chartData = useMemo(() => {
-     // 1. Calculate Total Plan for the current filtered scope and selected KPI
      const planKey = dailyKpi.replace('Ach', 'Plan') as keyof PlanRow;
      const totalPlan = filteredPlans.reduce((sum, row) => sum + (Number(row[planKey]) || 0), 0);
 
@@ -428,9 +517,7 @@ export default function EVPMDashboard({ plans, achievements, onRefresh, lastUpda
 
      return Object.entries(groupedByDate)
         .map(([date, value]) => {
-            // Calculate Time Gone Percentage specifically for this history date
             const { percentage } = calculateTimeGone(date);
-            // Expected Value (Target) = Total Plan * (Days passed / Total Days)
             const targetValue = totalPlan * (percentage / 100);
 
             return { 
@@ -440,20 +527,22 @@ export default function EVPMDashboard({ plans, achievements, onRefresh, lastUpda
             };
         })
         .sort((a, b) => a.date.localeCompare(b.date))
-        .filter(item => item.date <= effectiveDate); // Linked to Date Filter
+        .filter(item => item.date <= effectiveDate); 
   }, [filteredPlans, achievements, dailyKpi, effectiveDate]);
 
 
-  // DYNAMIC FILTER OPTIONS
+  // DYNAMIC FILTER OPTIONS - UPDATED
   const getOptions = (targetKey: string) => {
+      // Logic: Filter data based on ALL other filters EXCEPT the current target key
       let baseData = plans.filter(row => 
          Object.entries(userFilters).every(([k, v]) => !v || String(row[k as keyof PlanRow]) === String(v))
       );
 
-      Object.entries(activeFilters).forEach(([filterKey, filterVal]) => {
-          if (filterKey === targetKey) return;
-          if (!filterVal) return;
-          baseData = baseData.filter(row => String(row[filterKey as keyof PlanRow]) === String(filterVal));
+      Object.entries(activeFilters).forEach(([filterKey, filterVals]: [string, any]) => {
+          if (filterKey === targetKey) return; // Skip self to allow selection
+          if (!filterVals || filterVals.length === 0) return;
+          
+          baseData = baseData.filter(row => filterVals.includes(String(row[filterKey as keyof PlanRow])));
       });
       
       return getUniqueValues(baseData, targetKey);
@@ -467,7 +556,6 @@ export default function EVPMDashboard({ plans, achievements, onRefresh, lastUpda
         pc_p: acc.pc_p + (Number(row["Plan PC"]) || 0), pc_a: acc.pc_a + (Number(row["Ach PC"]) || 0),
         lpc_p: acc.lpc_p + (Number(row["Plan LPC"]) || 0), lpc_a: acc.lpc_a + (Number(row["Ach LPC"]) || 0),
         mvs_p: acc.mvs_p + (Number(row["Plan MVS"]) || 0), mvs_a: acc.mvs_a + (Number(row["Ach MVS"]) || 0),
-        // Debt Aggregation
         due: acc.due + (Number(row.Due) || 0),
         overdue: acc.overdue + (Number(row.Overdue) || 0),
         total_debt: acc.total_debt + (Number(row["Total Debt"]) || 0),
@@ -505,17 +593,14 @@ export default function EVPMDashboard({ plans, achievements, onRefresh, lastUpda
       }));
   }, [currentViewData, channelKpi]);
 
-  // Salesman Performance Data (Using salesmanChartSource to include peers for Salesmen)
+  // Salesman Performance Data
   const salesmanData = useMemo(() => {
     const planKey = `Plan ${salesmanKpi}` as keyof KPIRow;
     const achKey = `Ach ${salesmanKpi}` as keyof KPIRow;
 
     type SalesmanGroup = { name: string, fullName: string, Plan: number, Actual: number };
     const groups = salesmanChartSource.reduce((acc: Record<string, SalesmanGroup>, row) => {
-        // Use full name but try to keep it readable
         const name = row.SALESMANNAMEA || 'Unknown';
-        
-        // Use a short name for display (First 2 words)
         const parts = name.split(' ');
         const shortName = parts.length > 2 ? `${parts[0]} ${parts[1]}` : name;
 
@@ -528,7 +613,7 @@ export default function EVPMDashboard({ plans, achievements, onRefresh, lastUpda
     return Object.values(groups).map((item: SalesmanGroup) => ({
         ...item,
         achPct: item.Plan > 0 ? Math.round((item.Actual / item.Plan) * 100) : 0
-    })).sort((a, b) => b.Plan - a.Plan); // Sorted by Plan (Highest to Lowest)
+    })).sort((a, b) => b.Plan - a.Plan); 
   }, [salesmanChartSource, salesmanKpi]);
 
   // Top/Bottom 5 (Dynamic - NOW BY PERCENTAGE)
@@ -577,28 +662,32 @@ export default function EVPMDashboard({ plans, achievements, onRefresh, lastUpda
         .slice(0, 5);
   }, [currentViewData, distKpi]);
 
-  // UPDATED: Calculate Time Gone based on effectiveDate (Selected Date)
   const timeGone = useMemo(() => calculateTimeGone(effectiveDate), [effectiveDate]);
   
-  // NEW: Calculate Time Gone based on Today (Real Time)
-  const timeGoneToday = useMemo(() => calculateTimeGone(), []);
-
-  const updateFilter = (key: string, val: string) => {
+  const updateFilter = (key: string, val: string[]) => {
       const newFilters = { ...activeFilters, [key]: val };
       setActiveFilters(newFilters);
   };
   
   const handleClearFilters = () => {
-    setActiveFilters({
-        Region: '',
-        RSM: '',
-        SM: '',
-        'Dist Name': '',
-        'T.L Name': '',
-        SALESMANNAMEA: '',
-        Channel: '',
-        ...userFilters
+    // Reset to user defaults (which are arrays now)
+    const init: any = {
+        Region: [],
+        RSM: [],
+        SM: [],
+        'Dist Name': [],
+        'T.L Name': [],      
+        SALESMANNAMEA: [],
+        Channel: []
+    };
+    Object.keys(userFilters).forEach(key => {
+        if (userFilters[key]) {
+            init[key] = [userFilters[key]];
+        }
     });
+
+    setActiveFilters(init);
+    
     if (availableDates.length > 0) {
         setSelectedDate(availableDates[availableDates.length - 1]);
     } else {
@@ -614,9 +703,7 @@ export default function EVPMDashboard({ plans, achievements, onRefresh, lastUpda
 
   const filterKeys = ['Region', 'RSM', 'SM', 'Dist Name', 'T.L Name', 'SALESMANNAMEA', 'Channel'];
 
-  // --- NEW LOGIC FOR DEBT BREAKDOWN DRILL-DOWN ---
-  
-  // 1. Define Hierarchy Levels
+  // --- DEBT BREAKDOWN DRILL-DOWN LOGIC ---
   const hierarchyLevels = useMemo(() => [
     { key: 'Region', label: 'Region', depth: 0 },
     { key: 'RSM', label: 'RSM', depth: 1 },
@@ -626,46 +713,34 @@ export default function EVPMDashboard({ plans, achievements, onRefresh, lastUpda
     { key: 'SALESMANNAMEA', label: 'Salesman', depth: 5 }
   ], []);
 
-  // 2. Determine Current View Depth based on filters
   const currentDepth = useMemo(() => {
-      if (activeFilters['SALESMANNO'] || activeFilters['SALESMANNAMEA']) return 5;
-      if (activeFilters['T.L Name']) return 4;
-      if (activeFilters['Dist Name']) return 3;
-      if (activeFilters['SM']) return 2;
-      if (activeFilters['RSM']) return 1;
-      if (activeFilters['Region']) return 0;
-      return 0; // Default to top level (Region or RSM view)
+      if (activeFilters['SALESMANNO']?.length > 0 || activeFilters['SALESMANNAMEA']?.length > 0) return 5;
+      if (activeFilters['T.L Name']?.length > 0) return 4;
+      if (activeFilters['Dist Name']?.length > 0) return 3;
+      if (activeFilters['SM']?.length > 0) return 2;
+      if (activeFilters['RSM']?.length > 0) return 1;
+      if (activeFilters['Region']?.length > 0) return 0;
+      return 0; 
   }, [activeFilters]);
 
-  // 3. Drill Level State
   const [debtDrillKey, setDebtDrillKey] = useState<string>('');
-  
-  // New Metric State: All, Due, or Overdue
   const [debtMetric, setDebtMetric] = useState<'All' | 'Due' | 'Overdue'>('All');
 
-  // 4. Update Drill Level automatically when depth changes (Default to next level down)
   useEffect(() => {
       const nextLevelIndex = currentDepth + 1;
       if (nextLevelIndex < hierarchyLevels.length) {
           setDebtDrillKey(hierarchyLevels[nextLevelIndex].key);
       } else {
-          setDebtDrillKey(''); // No lower level (Salesman View)
+          setDebtDrillKey(''); 
       }
   }, [currentDepth, hierarchyLevels]);
 
-  // 5. Compute Breakdown Data based on `debtDrillKey`
   const debtBreakdownData = useMemo(() => {
       if (!debtDrillKey || currentDepth >= 5) return [];
 
-      type DebtGroup = { name: string, fullKey: string, Due: number, Overdue: number, Total: number };
       const groups = currentViewData.reduce((acc: Record<string, DebtGroup>, row) => {
           let key = String(row[debtDrillKey as keyof KPIRow] || 'Unknown');
-          
-          // GENERALIZED Name Shortening for display key
-          // We use the full key for the object key to prevent merging people with same shortened names
-          // But we store a truncated display name.
           let displayName = key;
-          // MODIFIED: Do not shorten if it is a Distributor Name
           if (typeof key === 'string' && debtDrillKey !== 'Dist Name') {
                const parts = key.split(' ');
                if (parts.length > 2) {
@@ -680,40 +755,30 @@ export default function EVPMDashboard({ plans, achievements, onRefresh, lastUpda
           return acc;
       }, {});
 
-      // NEW LOGIC: Filter based on Debt Metric (Due/Overdue/All)
       const rawList = Object.values(groups).filter((item: DebtGroup) => {
-          if (debtMetric === 'Due') {
-              return item.Due > 0;
-          }
-          if (debtMetric === 'Overdue') {
-              return item.Overdue > 0;
-          }
-          return item.Total > 0; // Default (All)
+          if (debtMetric === 'Due') return item.Due > 0;
+          if (debtMetric === 'Overdue') return item.Overdue > 0;
+          return item.Total > 0; 
       });
 
-      // NEW: Calculate Grand Total for percentage calculation based on the selected metric
       let metricKey: 'Total' | 'Due' | 'Overdue' = 'Total';
       if (debtMetric === 'Due') metricKey = 'Due';
       else if (debtMetric === 'Overdue') metricKey = 'Overdue';
 
-      // Explicit cast to number to ensure TS is happy
-      const grandTotal: number = rawList.reduce((sum: number, item: DebtGroup) => sum + ((item as any)[metricKey] as number), 0);
+      const grandTotal: number = rawList.reduce((sum: number, item: DebtGroup) => sum + (Number(item[metricKey]) || 0), 0);
 
       return rawList
              .map((item: DebtGroup) => ({
                  ...item,
-                 // Calculate global share percentage (share of grand total)
-                 GlobalShare: grandTotal > 0 ? (((item as any)[metricKey] as number) / grandTotal) * 100 : 0
+                 GlobalShare: grandTotal > 0 ? ((Number(item[metricKey]) || 0) / grandTotal) * 100 : 0
              }))
              .sort((a, b) => {
-                 // Sort based on selected metric
                  if (debtMetric === 'Due') return b.Due - a.Due;
                  if (debtMetric === 'Overdue') return b.Overdue - a.Overdue;
                  return b.Total - a.Total;
              });
   }, [currentViewData, debtDrillKey, currentDepth, debtMetric]);
 
-  // 6. Available Options for Filter Buttons (Levels lower than current depth)
   const availableDrillOptions = useMemo(() => {
       return hierarchyLevels.filter(lvl => lvl.depth > currentDepth);
   }, [hierarchyLevels, currentDepth]);
@@ -761,16 +826,13 @@ export default function EVPMDashboard({ plans, achievements, onRefresh, lastUpda
 
                 {filterKeys.map(key => (
                     !userFilters[key] && (
-                        <div key={key} className="relative group">
-                            <select 
-                                value={activeFilters[key as keyof typeof activeFilters]} 
-                                onChange={(e) => updateFilter(key, e.target.value)}
-                                className="w-full bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 text-[11px] font-bold py-2.5 px-3 rounded-xl outline-none focus:border-blue-500 appearance-none transition-all cursor-pointer shadow-sm"
-                            >
-                                <option value="">{getLabel(key)}: All</option>
-                                {getOptions(key).map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                            </select>
-                            <ChevronDown size={14} className="absolute right-3 top-3 text-slate-400 pointer-events-none group-hover:text-blue-500"/>
+                        <div key={key}>
+                            <MultiSelectDropdown 
+                                label={getLabel(key)}
+                                options={getOptions(key)}
+                                selected={activeFilters[key] || []}
+                                onChange={(vals) => updateFilter(key, vals)}
+                            />
                         </div>
                     )
                 ))}
@@ -1000,7 +1062,7 @@ export default function EVPMDashboard({ plans, achievements, onRefresh, lastUpda
                 </div>
             )}
             
-            {/* Split Row for Top 5 and Bottom 5 (PERCENTAGE BASED) - Hidden if Restricted View (Salesman OR TL OR Distributor Filter) */}
+            {/* Split Row for Top 5 and Bottom 5 (PERCENTAGE BASED) */}
             {!isRestrictedView && (
                 <div>
                     <div className="mb-4 flex justify-between items-center bg-white p-4 rounded-3xl border border-slate-100 shadow-sm">
@@ -1026,7 +1088,8 @@ export default function EVPMDashboard({ plans, achievements, onRefresh, lastUpda
                                                 <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
                                             </linearGradient>
                                         </defs>
-                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9"/>
+                                        {/* Added vertical={true} for vertical lines indicators */}
+                                        <CartesianGrid strokeDasharray="3 3" vertical={true} stroke="#f1f5f9"/>
                                         <XAxis 
                                             dataKey="name" 
                                             tick={{fontSize: 9, fontWeight: 'bold'}}
@@ -1047,16 +1110,18 @@ export default function EVPMDashboard({ plans, achievements, onRefresh, lastUpda
                                             tickCount={10} 
                                         />
                                         <Tooltip content={<CustomTooltip />} />
+                                        {/* Removed ReferenceLine y={80} */}
                                         <Area 
                                             name="% Achievement"
                                             type="monotone" 
                                             dataKey="Value" 
                                             stroke="#10b981" 
                                             strokeWidth={3} 
-                                            fillOpacity={1} 
+                                            fillOpacity={0} 
                                             fill="url(#colorGsvTop)"
+                                            // Enhanced dots to show point positions clearly - NOW SOLID (no strokeWidth)
                                             dot={{ r: 4, strokeWidth: 0, fill: '#10b981' }}
-                                            activeDot={{ r: 6 }}
+                                            activeDot={{ r: 6, fill: '#10b981', stroke: '#fff' }}
                                         >
                                             <LabelList 
                                                 dataKey="Value" 
@@ -1085,7 +1150,8 @@ export default function EVPMDashboard({ plans, achievements, onRefresh, lastUpda
                                                 <stop offset="95%" stopColor="#ef4444" stopOpacity={0}/>
                                             </linearGradient>
                                         </defs>
-                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9"/>
+                                        {/* Added vertical={true} for vertical lines indicators */}
+                                        <CartesianGrid strokeDasharray="3 3" vertical={true} stroke="#f1f5f9"/>
                                         <XAxis 
                                             dataKey="name" 
                                             tick={{fontSize: 9, fontWeight: 'bold'}}
@@ -1106,16 +1172,18 @@ export default function EVPMDashboard({ plans, achievements, onRefresh, lastUpda
                                             tickCount={10} 
                                         />
                                         <Tooltip content={<CustomTooltip />} />
+                                        {/* Removed ReferenceLine y={80} */}
                                         <Area 
                                             name="% Achievement"
                                             type="monotone" 
                                             dataKey="Value" 
                                             stroke="#ef4444" 
                                             strokeWidth={3} 
-                                            fillOpacity={1} 
+                                            fillOpacity={0} 
                                             fill="url(#colorGsvBottom)"
+                                            // Enhanced dots to show point positions clearly - NOW SOLID (no strokeWidth)
                                             dot={{ r: 4, strokeWidth: 0, fill: '#ef4444' }}
-                                            activeDot={{ r: 6 }}
+                                            activeDot={{ r: 6, fill: '#ef4444', stroke: '#fff' }}
                                         >
                                             <LabelList 
                                                 dataKey="Value" 
@@ -1270,7 +1338,7 @@ export default function EVPMDashboard({ plans, achievements, onRefresh, lastUpda
                                         dataKey="Due" 
                                         stackId="a" 
                                         fill="url(#debtDueGradient)" 
-                                        radius={debtMetric === 'Due' ? [6, 6, 0, 0] : [0, 0, 6, 6]} 
+                                        radius={debtMetric === 'Due' ? [6, 6, 0, 0] as [number, number, number, number] : [0, 0, 6, 6] as [number, number, number, number]} 
                                         barSize={24} 
                                         name="Due Amount" 
                                     />
@@ -1280,7 +1348,7 @@ export default function EVPMDashboard({ plans, achievements, onRefresh, lastUpda
                                         dataKey="Overdue" 
                                         stackId="a" 
                                         fill="url(#debtOverdueGradient)" 
-                                        radius={[6, 6, 0, 0]} 
+                                        radius={[6, 6, 0, 0] as [number, number, number, number]} 
                                         barSize={24} 
                                         name="Overdue Amount" 
                                     />
