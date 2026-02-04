@@ -33,10 +33,10 @@ export default function Login({ onLogin, users, data, jobs, config, setConfig, i
   // Team Leader List (Unique Values)
   const tlList = useMemo(() => getUniqueValues(data, 'T.L Name'), [data]);
 
-  // Director List (From Users Sheet) - Filter by JobTitle 'Director'
+  // Director List (From Users Sheet) - Filter by JobTitle 'Director' (Case Insensitive & Trimmed)
   const directorList = useMemo(() => {
     return users
-      .filter(u => u.jobTitle === 'Director')
+      .filter(u => String(u.jobTitle || '').trim().toLowerCase() === 'director')
       .map(u => u.name || u.username);
   }, [users]);
   
@@ -236,8 +236,8 @@ export default function Login({ onLogin, users, data, jobs, config, setConfig, i
                              </label>
                              
                              <div className="relative">
-                                {(roleType === 'SALESMANNAMEA' || roleType === 'ASM' || roleType === 'Director' || roleType === 'Admin' || roleType === 'T.L Name') ? (
-                                    // Searchable Dropdown for Salesman OR ASM OR Director OR Admin OR TL
+                                {(roleType === 'SALESMANNAMEA' || roleType === 'Admin' || roleType === 'T.L Name') ? (
+                                    // Searchable Dropdown for Salesman OR Admin OR TL
                                     <div className="relative">
                                         <input 
                                             type="text" 
@@ -272,7 +272,7 @@ export default function Login({ onLogin, users, data, jobs, config, setConfig, i
                                         )}
                                     </div>
                                 ) : (
-                                    // Standard Dropdown for Managers (RSM/SM)
+                                    // Standard Dropdown for Managers (RSM/SM/ASM/Director)
                                     <>
                                         <select 
                                             value={selectedIdentity} 
@@ -280,9 +280,17 @@ export default function Login({ onLogin, users, data, jobs, config, setConfig, i
                                             className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl px-4 py-3 text-right pr-10 focus:border-blue-500 outline-none appearance-none cursor-pointer font-bold text-slate-700"
                                         >
                                             <option value="">اختر من القائمة</option>
-                                            {(roleType === 'RSM' ? rsmList : smList).map(item => (
-                                                <option key={item} value={item}>{item}</option>
-                                            ))}
+                                            {(() => {
+                                                let list: string[] = [];
+                                                if (roleType === 'RSM') list = rsmList;
+                                                else if (roleType === 'SM') list = smList;
+                                                else if (roleType === 'ASM') list = asmList;
+                                                else if (roleType === 'Director') list = directorList;
+                                                
+                                                return list.map(item => (
+                                                    <option key={item} value={item}>{item}</option>
+                                                ));
+                                            })()}
                                         </select>
                                         <UserIcon className="absolute right-3 top-3.5 text-slate-400" size={18} />
                                     </>
