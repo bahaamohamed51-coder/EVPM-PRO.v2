@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { User, Job, AppConfig, KPIRow } from '../types';
 import { Database, Upload, Users, Plus, Trash2, Shield, FileJson, FileDown, Save, CloudDownload, Calendar, Share2 } from 'lucide-react';
@@ -263,11 +262,14 @@ export default function AdminPanel({ config, setConfig, onRefresh, allUsers, job
                     <div className="space-y-3">
                         <input className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold outline-none" placeholder="Username" value={newUser.username || ''} onChange={e => setNewUser({...newUser, username: e.target.value})} />
                         <input className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold outline-none" placeholder="Password" value={newUser.password || ''} onChange={e => setNewUser({...newUser, password: e.target.value})} />
+                        {/* Added Job Title Input */}
+                        <input className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold outline-none" placeholder="Job Title" value={newUser.jobTitle || ''} onChange={e => setNewUser({...newUser, jobTitle: e.target.value})} />
+                        
                         <select className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold outline-none" value={newUser.role || 'user'} onChange={e => setNewUser({...newUser, role: e.target.value as any})}>
                             <option value="user">User</option>
                             <option value="admin">Admin</option>
                         </select>
-                        <button onClick={() => { if(newUser.username && newUser.password) { const updated = [...allUsers, { ...newUser, name: newUser.username } as User]; syncUsers(updated); setNewUser({role:'user'}); } }} className="w-full bg-blue-600 text-white font-black py-3 rounded-xl shadow-lg hover:bg-blue-700 transition-colors">Save</button>
+                        <button onClick={() => { if(newUser.username && newUser.password) { const updated = [...allUsers, { ...newUser, name: newUser.username, jobTitle: newUser.jobTitle || 'Staff' } as User]; syncUsers(updated); setNewUser({role:'user', jobTitle: ''}); } }} className="w-full bg-blue-600 text-white font-black py-3 rounded-xl shadow-lg hover:bg-blue-700 transition-colors">Save</button>
                     </div>
                 </div>
              </div>
@@ -279,12 +281,13 @@ export default function AdminPanel({ config, setConfig, onRefresh, allUsers, job
                 </div>
                 <div className="overflow-x-auto">
                     <table className="w-full text-left">
-                        <thead><tr className="text-[10px] text-slate-400 uppercase border-b border-slate-100"><th className="pb-2">Username</th><th className="pb-2">Role</th><th className="pb-2">Action</th></tr></thead>
+                        <thead><tr className="text-[10px] text-slate-400 uppercase border-b border-slate-100"><th className="pb-2">Username</th><th className="pb-2">Role</th><th className="pb-2">Job Title</th><th className="pb-2">Action</th></tr></thead>
                         <tbody>
                             {allUsers.map((u, i) => (
                                 <tr key={i} className="border-b border-slate-50 text-xs font-bold text-slate-700">
                                     <td className="py-3">{u.username}</td>
                                     <td className="py-3"><span className={`px-2 py-1 rounded-md ${u.role === 'admin' ? 'bg-orange-100 text-orange-600' : 'bg-blue-50 text-blue-600'}`}>{u.role}</span></td>
+                                    <td className="py-3">{u.jobTitle || '-'}</td>
                                     <td className="py-3">
                                         <button onClick={() => { if(confirm('Delete credential?')) { const updated = allUsers.filter(x => x.username !== u.username); syncUsers(updated); } }} className="text-red-400 hover:text-red-600"><Trash2 size={16}/></button>
                                     </td>
