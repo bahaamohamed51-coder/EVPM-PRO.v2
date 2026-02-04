@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { User, PlanRow, AchievedRow, Job, AppConfig } from './types';
 import Login from './components/Login';
@@ -141,7 +140,8 @@ const App: React.FC = () => {
   const getSafeUserFilters = (user: User) => {
     if (user.role === 'admin') return {}; 
     // Allow 'Staff' job title to view all data (same as admin logic for filters)
-    if (user.jobTitle === 'Staff') return {};
+    // Updated to also allow 'Director' to have full view
+    if (user.jobTitle === 'Staff' || user.jobTitle === 'Director') return {};
 
     const allowedKeys = ['Region', 'RSM', 'SM', 'Dist Name', 'T.L Name', 'Channel', 'SALESMANNO'];
     const filters: any = {};
