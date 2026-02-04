@@ -1119,9 +1119,9 @@ export default function EVPMDashboard({ plans, achievements, onRefresh, lastUpda
                                             strokeWidth={3} 
                                             fillOpacity={0} 
                                             fill="url(#colorGsvTop)"
-                                            // Enhanced dots to show point positions clearly - NOW SOLID (no strokeWidth)
-                                            dot={{ r: 4, strokeWidth: 0, fill: '#10b981' }}
-                                            activeDot={{ r: 6, fill: '#10b981', stroke: '#fff' }}
+                                            // Enhanced dots to show point positions clearly - SOLID with white border
+                                            dot={{ r: 6, fill: '#10b981', stroke: '#fff', strokeWidth: 2, fillOpacity: 1 }}
+                                            activeDot={{ r: 8, fill: '#10b981', stroke: '#fff', strokeWidth: 2 }}
                                         >
                                             <LabelList 
                                                 dataKey="Value" 
@@ -1181,9 +1181,9 @@ export default function EVPMDashboard({ plans, achievements, onRefresh, lastUpda
                                             strokeWidth={3} 
                                             fillOpacity={0} 
                                             fill="url(#colorGsvBottom)"
-                                            // Enhanced dots to show point positions clearly - NOW SOLID (no strokeWidth)
-                                            dot={{ r: 4, strokeWidth: 0, fill: '#ef4444' }}
-                                            activeDot={{ r: 6, fill: '#ef4444', stroke: '#fff' }}
+                                            // Enhanced dots to show point positions clearly - SOLID with white border
+                                            dot={{ r: 6, fill: '#ef4444', stroke: '#fff', strokeWidth: 2, fillOpacity: 1 }}
+                                            activeDot={{ r: 8, fill: '#ef4444', stroke: '#fff', strokeWidth: 2 }}
                                         >
                                             <LabelList 
                                                 dataKey="Value" 
