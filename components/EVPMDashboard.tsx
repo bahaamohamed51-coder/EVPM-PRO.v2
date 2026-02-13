@@ -210,6 +210,7 @@ const CustomTooltip = ({ active, payload, label, filterType }: any) => {
       const data = payload[0].payload;
       const total = data.Total; // Exists only on Debt Chart
       const globalShare = data.GlobalShare; // Exists only on Debt Chart
+      const isProjection = data.isProjection; // Check if it's the future target point
 
       // Check if we should show total in header
       // It exists only in Debt chart (total property).
@@ -223,6 +224,7 @@ const CustomTooltip = ({ active, payload, label, filterType }: any) => {
               {/* MODIFIED: Added Total amount display next to name only if showTotal is true */}
               <span>
                   {label} 
+                  {isProjection && <span className="text-yellow-400 ml-1">(Next Target)</span>}
                   {showTotal && <span className="text-emerald-400 font-normal ml-1">({formatCurrency(total)})</span>}
               </span>
               {typeof globalShare === 'number' && (
@@ -237,6 +239,9 @@ const CustomTooltip = ({ active, payload, label, filterType }: any) => {
              else if (typeof p.color === 'string' && p.color.startsWith('url')) {
                  textColor = '#fff'; // Fallback white if gradient
              }
+             
+             // If projection, skip "Achieved" if null
+             if (isProjection && p.dataKey === 'value') return null;
              
              // Calculate % if Total exists (Debt Chart) and it's not a percentage value itself
              let pctString = '';
@@ -386,7 +391,10 @@ export default function EVPMDashboard({ plans, achievements, onRefresh, lastUpda
   // Check TL View (Team Leader)
   const isTLView = !!userFilters['T.L Name'];
   
-  // Check Restricted View: Dist Name, Salesman OR Team Leader (To hide Distributor Rankings)
+  // Check SM View (Sales Manager)
+  const isSMView = !!userFilters['SM'] && !userFilters['Dist Name'];
+
+  // Check Restricted View: Dist Name, Salesman OR Team Leader OR SM (To hide Distributor Rankings)
   const isRestrictedView = !!(userFilters['Dist Name'] || isSalesman || isTLView);
   
   // Check ASM View (Distributor but NOT Salesman)
@@ -498,7 +506,7 @@ export default function EVPMDashboard({ plans, achievements, onRefresh, lastUpda
     return currentViewData;
   }, [isSalesman, userFilters, plans, achievements, effectiveDate, currentViewData]);
 
-  // 4. DATA FOR LINE CHART (Daily Progress)
+  // 4. DATA FOR LINE CHART (Daily Progress) - MODIFIED FOR NEXT TARGET
   const chartData = useMemo(() => {
      const planKey = dailyKpi.replace('Ach', 'Plan') as keyof PlanRow;
      const totalPlan = filteredPlans.reduce((sum, row) => sum + (Number(row[planKey]) || 0), 0);
@@ -515,7 +523,7 @@ export default function EVPMDashboard({ plans, achievements, onRefresh, lastUpda
          }
      });
 
-     return Object.entries(groupedByDate)
+     const processedData = Object.entries(groupedByDate)
         .map(([date, value]) => {
             const { percentage } = calculateTimeGone(date);
             const targetValue = totalPlan * (percentage / 100);
@@ -523,11 +531,55 @@ export default function EVPMDashboard({ plans, achievements, onRefresh, lastUpda
             return { 
                 date, 
                 value,
-                target: targetValue 
+                target: targetValue,
+                isProjection: false
             };
         })
         .sort((a, b) => a.date.localeCompare(b.date))
-        .filter(item => item.date <= effectiveDate); 
+        .filter(item => item.date <= effectiveDate);
+    
+     // --- ADD NEXT DAY TARGET LOGIC ---
+     if (processedData.length > 0 && totalPlan > 0) {
+        const lastDataDate = new Date(effectiveDate);
+        let nextTargetDate = new Date(lastDataDate);
+        let foundNext = false;
+        
+        const currentMonth = lastDataDate.getMonth();
+        
+        // Find next valid working day (Skip Friday, stay in month)
+        for(let i=1; i<=5; i++) { // Look ahead max 5 days (e.g. over long weekends)
+             nextTargetDate.setDate(nextTargetDate.getDate() + 1);
+             
+             // Check if moved to next month
+             if (nextTargetDate.getMonth() !== currentMonth) {
+                 break; 
+             }
+             
+             // Check if Friday (5)
+             if (nextTargetDate.getDay() === 5) {
+                 continue;
+             }
+             
+             foundNext = true;
+             break;
+        }
+
+        if (foundNext) {
+             const nextDateStr = nextTargetDate.toISOString().split('T')[0];
+             const { percentage } = calculateTimeGone(nextTargetDate);
+             const targetValue = totalPlan * (percentage / 100);
+             
+             processedData.push({
+                 date: nextDateStr,
+                 value: null as any, // No actual value yet
+                 target: targetValue,
+                 isProjection: true
+             });
+        }
+     }
+
+     return processedData;
+
   }, [filteredPlans, achievements, dailyKpi, effectiveDate]);
 
 
@@ -590,31 +642,92 @@ export default function EVPMDashboard({ plans, achievements, onRefresh, lastUpda
       return Object.values(groups).map((item: ChannelGroup) => ({
           ...item,
           achPct: item.Plan > 0 ? Math.round((item.Actual / item.Plan) * 100) : 0
-      }));
+      })).sort((a, b) => b.Plan - a.Plan);
   }, [currentViewData, channelKpi]);
 
-  // Salesman Performance Data
-  const salesmanData = useMemo(() => {
+  // --- DYNAMIC HIERARCHY LOGIC FOR SALES PERFORMANCE CHART ---
+  // Reusing the Drill Down logic from Debt Chart for Sales Chart
+  const hierarchyLevels = useMemo(() => [
+    { key: 'Region', label: 'Region', depth: 0 },
+    { key: 'RSM', label: 'RSM', depth: 1 },
+    { key: 'SM', label: 'SM', depth: 2 },
+    { key: 'Dist Name', label: 'Distributor', depth: 3 },
+    { key: 'T.L Name', label: 'Team Leader', depth: 4 },
+    { key: 'SALESMANNAMEA', label: 'Salesman', depth: 5 }
+  ], []);
+
+  const currentDepth = useMemo(() => {
+      if (activeFilters['SALESMANNO']?.length > 0 || activeFilters['SALESMANNAMEA']?.length > 0) return 5;
+      if (activeFilters['T.L Name']?.length > 0) return 4;
+      if (activeFilters['Dist Name']?.length > 0) return 3;
+      if (activeFilters['SM']?.length > 0) return 2;
+      if (activeFilters['RSM']?.length > 0) return 1;
+      if (activeFilters['Region']?.length > 0) return 0;
+      return 0; 
+  }, [activeFilters]);
+
+  // State for Sales Drill Down (similar to debtDrillKey)
+  const [salesDrillKey, setSalesDrillKey] = useState<string>('');
+
+  // Auto-set the drill key based on current user view/depth
+  useEffect(() => {
+      const nextLevelIndex = currentDepth + 1;
+      if (nextLevelIndex < hierarchyLevels.length) {
+          setSalesDrillKey(hierarchyLevels[nextLevelIndex].key);
+      } else {
+          setSalesDrillKey(hierarchyLevels[hierarchyLevels.length - 1].key); // Fallback to last level
+      }
+  }, [currentDepth, hierarchyLevels]);
+
+  const hierarchyTitle = useMemo(() => {
+      // Dynamic title based on what we are showing
+      const level = hierarchyLevels.find(l => l.key === salesDrillKey);
+      if (level) return `${level.label} Performance`;
+      return 'Sales Performance';
+  }, [salesDrillKey, hierarchyLevels]);
+
+  // Salesman/Hierarchy Performance Data
+  const hierarchyData = useMemo(() => {
+    if (!salesDrillKey) return [];
+    
     const planKey = `Plan ${salesmanKpi}` as keyof KPIRow;
     const achKey = `Ach ${salesmanKpi}` as keyof KPIRow;
+    const groupKey = salesDrillKey as keyof KPIRow; // Use the Drill Key, not hierarchyKey
 
-    type SalesmanGroup = { name: string, fullName: string, Plan: number, Actual: number };
-    const groups = salesmanChartSource.reduce((acc: Record<string, SalesmanGroup>, row) => {
-        const name = row.SALESMANNAMEA || 'Unknown';
-        const parts = name.split(' ');
-        const shortName = parts.length > 2 ? `${parts[0]} ${parts[1]}` : name;
+    type GroupData = { name: string, fullName: string, Plan: number, Actual: number };
+    
+    // Use salesmanChartSource to allow peer view for Salesmen, otherwise falls back to viewData
+    const groups = salesmanChartSource.reduce((acc: Record<string, GroupData>, row) => {
+        const keyVal = String(row[groupKey] || 'Unknown');
+        
+        let displayName = keyVal;
+        
+        // --- MODIFIED: Match Debt Breakdown logic exactly
+        // Only shorten if it's NOT a distributor name AND has more than 2 words
+        if (typeof keyVal === 'string' && salesDrillKey !== 'Dist Name') {
+            const parts = keyVal.trim().split(/\s+/);
+            if (parts.length > 2) {
+                 displayName = `${parts[0]} ${parts[1]}`;
+            }
+        }
 
-        if (!acc[name]) acc[name] = { name: shortName, fullName: name, Plan: 0, Actual: 0 };
-        acc[name].Plan += (Number(row[planKey]) || 0);
-        acc[name].Actual += (Number(row[achKey]) || 0);
+        if (!acc[keyVal]) acc[keyVal] = { name: displayName, fullName: keyVal, Plan: 0, Actual: 0 };
+        acc[keyVal].Plan += (Number(row[planKey]) || 0);
+        acc[keyVal].Actual += (Number(row[achKey]) || 0);
         return acc;
     }, {});
 
-    return Object.values(groups).map((item: SalesmanGroup) => ({
+    return Object.values(groups).map((item: GroupData) => ({
         ...item,
         achPct: item.Plan > 0 ? Math.round((item.Actual / item.Plan) * 100) : 0
     })).sort((a, b) => b.Plan - a.Plan); 
-  }, [salesmanChartSource, salesmanKpi]);
+  }, [salesmanChartSource, salesmanKpi, salesDrillKey]);
+
+  // Determine available options for drilling down in Sales Chart
+  const availableSalesDrillOptions = useMemo(() => {
+      return hierarchyLevels.filter(lvl => lvl.depth > currentDepth);
+  }, [hierarchyLevels, currentDepth]);
+
 
   // Top/Bottom 5 (Dynamic - NOW BY PERCENTAGE)
   const topDistributors = useMemo(() => {
@@ -704,25 +817,6 @@ export default function EVPMDashboard({ plans, achievements, onRefresh, lastUpda
   const filterKeys = ['Region', 'RSM', 'SM', 'Dist Name', 'T.L Name', 'SALESMANNAMEA', 'Channel'];
 
   // --- DEBT BREAKDOWN DRILL-DOWN LOGIC ---
-  const hierarchyLevels = useMemo(() => [
-    { key: 'Region', label: 'Region', depth: 0 },
-    { key: 'RSM', label: 'RSM', depth: 1 },
-    { key: 'SM', label: 'SM', depth: 2 },
-    { key: 'Dist Name', label: 'Distributor', depth: 3 },
-    { key: 'T.L Name', label: 'Team Leader', depth: 4 },
-    { key: 'SALESMANNAMEA', label: 'Salesman', depth: 5 }
-  ], []);
-
-  const currentDepth = useMemo(() => {
-      if (activeFilters['SALESMANNO']?.length > 0 || activeFilters['SALESMANNAMEA']?.length > 0) return 5;
-      if (activeFilters['T.L Name']?.length > 0) return 4;
-      if (activeFilters['Dist Name']?.length > 0) return 3;
-      if (activeFilters['SM']?.length > 0) return 2;
-      if (activeFilters['RSM']?.length > 0) return 1;
-      if (activeFilters['Region']?.length > 0) return 0;
-      return 0; 
-  }, [activeFilters]);
-
   const [debtDrillKey, setDebtDrillKey] = useState<string>('');
   const [debtMetric, setDebtMetric] = useState<'All' | 'Due' | 'Overdue'>('All');
 
@@ -765,12 +859,13 @@ export default function EVPMDashboard({ plans, achievements, onRefresh, lastUpda
       if (debtMetric === 'Due') metricKey = 'Due';
       else if (debtMetric === 'Overdue') metricKey = 'Overdue';
 
-      const grandTotal: number = rawList.reduce((sum: number, item: DebtGroup) => sum + (Number(item[metricKey]) || 0), 0);
+      // Fix: Direct access without casting
+      const grandTotal = rawList.reduce((sum, item) => sum + (item[metricKey] || 0), 0);
 
       return rawList
-             .map((item: DebtGroup) => ({
+             .map((item) => ({
                  ...item,
-                 GlobalShare: grandTotal > 0 ? ((Number(item[metricKey]) || 0) / grandTotal) * 100 : 0
+                 GlobalShare: grandTotal > 0 ? ((item[metricKey] || 0) / grandTotal) * 100 : 0
              }))
              .sort((a, b) => {
                  if (debtMetric === 'Due') return b.Due - a.Due;
@@ -932,6 +1027,7 @@ export default function EVPMDashboard({ plans, achievements, onRefresh, lastUpda
                             dataKey="value" 
                             stroke="#3b82f6" 
                             strokeWidth={4} 
+                            connectNulls={true}
                             dot={{r: 4, strokeWidth: 0, fill: '#3b82f6'}} 
                             activeDot={{r: 7, stroke: '#fff', strokeWidth: 2}} 
                         >
@@ -971,57 +1067,78 @@ export default function EVPMDashboard({ plans, achievements, onRefresh, lastUpda
         {/* SECTION 4: Charts */}
         <div className="grid grid-cols-1 gap-6">
             
-            {/* Salesman Performance (Visible to ASM-Distributor, Team Leader, AND NOW Salesman) */}
-            {(isASMView || isTLView || isSalesman) && (
-                <div className="bg-gradient-to-br from-white to-slate-50 rounded-3xl p-3 shadow-md border border-slate-100">
-                    <div className="flex flex-wrap justify-between items-center mb-4 gap-4 px-3 pt-3">
-                        <div className="flex items-center gap-2">
-                             <Users size={20} className="text-blue-600"/>
-                             <h3 className="font-black text-slate-700 text-lg">Salesman Performance</h3>
-                        </div>
-                        <KpiFilterButtons current={salesmanKpi} onChange={setSalesmanKpi} />
+            {/* Sales Performance (Dynamic Drill-Down for All Users) */}
+            <div className="bg-gradient-to-br from-white to-slate-50 rounded-3xl p-3 shadow-md border border-slate-100">
+                <div className="flex flex-wrap justify-between items-center mb-4 gap-4 px-3 pt-3">
+                    <div className="flex items-center gap-2">
+                            <Users size={20} className="text-blue-600"/>
+                            <div>
+                                <h3 className="font-black text-slate-700 text-lg">{hierarchyTitle}</h3>
+                                {availableSalesDrillOptions.length > 0 && (
+                                     <p className="text-[10px] text-slate-400 font-bold">Level: {availableSalesDrillOptions.find(o => o.key === salesDrillKey)?.label || 'View'}</p>
+                                )}
+                            </div>
                     </div>
-                    <div className="h-80 w-full">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={salesmanData} margin={{top: 20, right: 10, left: -20, bottom: 20}}>
-                                <defs>
-                                    <linearGradient id="colorPlanBar" x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="0%" stopColor="#fdba74" stopOpacity={1}/>
-                                        <stop offset="100%" stopColor="#f97316" stopOpacity={1}/>
-                                    </linearGradient>
-                                    <linearGradient id="colorActualBar" x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="0%" stopColor="#60a5fa" stopOpacity={1}/>
-                                        <stop offset="100%" stopColor="#3b82f6" stopOpacity={1}/>
-                                    </linearGradient>
-                                </defs>
-                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9"/>
-                                <XAxis 
-                                    dataKey="name" 
-                                    tick={{fontSize: 9, fontWeight: 'bold'}} 
-                                    axisLine={false} 
-                                    tickLine={false} 
-                                    interval={0}
-                                    angle={-90}
-                                    textAnchor="start"
-                                    height={100}
-                                    tickMargin={35} 
-                                />
-                                <YAxis tickFormatter={(val) => formatNumber(val)} tick={{fontSize: 10, fontWeight: 'bold'}} axisLine={false} tickLine={false} />
-                                <Tooltip content={<CustomTooltip />} />
-                                <Legend 
-                                    iconType="circle" 
-                                    wrapperStyle={{fontSize: '10px', fontWeight: 'bold', paddingTop: '10px'}} 
-                                    formatter={(value) => <span style={{ marginInlineStart: '5px', marginInlineEnd: '15px' }}>{value}</span>}
-                                />
-                                <Bar dataKey="Plan" fill="url(#colorPlanBar)" radius={[4, 4, 0, 0]} barSize={20} name="Plan" />
-                                <Bar dataKey="Actual" fill="url(#colorActualBar)" radius={[4, 4, 0, 0]} barSize={20} name="Achieved">
-                                    <LabelList dataKey="achPct" position="top" formatter={(val: any) => `${val}%`} style={{ fontSize: '10px', fontWeight: 'bold', fill: '#3b82f6' }} />
-                                </Bar>
-                            </BarChart>
-                        </ResponsiveContainer>
+                    
+                    <div className="flex flex-wrap gap-2">
+                         {/* DRILL DOWN BUTTONS for Sales Performance */}
+                         {availableSalesDrillOptions.length > 0 && (
+                             <div className="flex bg-slate-800 p-1 rounded-xl gap-1 shadow-inner">
+                                {availableSalesDrillOptions.map(opt => (
+                                    <button
+                                        key={opt.key}
+                                        onClick={() => setSalesDrillKey(opt.key)}
+                                        className={`px-3 py-1.5 rounded-lg text-[10px] font-black transition-all ${salesDrillKey === opt.key ? 'bg-gradient-to-t from-blue-600 to-blue-500 text-white shadow-md' : 'text-slate-300 hover:text-white hover:bg-slate-700'}`}
+                                    >
+                                        {opt.label}
+                                    </button>
+                                ))}
+                             </div>
+                         )}
+
+                         <KpiFilterButtons current={salesmanKpi} onChange={setSalesmanKpi} />
                     </div>
                 </div>
-            )}
+                <div className="h-[500px] w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={hierarchyData} margin={{top: 20, right: 10, left: -20, bottom: 20}}>
+                            <defs>
+                                <linearGradient id="colorPlanBar" x1="0" y1="0" x2="0" y2="1">
+                                    <stop offset="0%" stopColor="#fdba74" stopOpacity={1}/>
+                                    <stop offset="100%" stopColor="#f97316" stopOpacity={1}/>
+                                </linearGradient>
+                                <linearGradient id="colorActualBar" x1="0" y1="0" x2="0" y2="1">
+                                    <stop offset="0%" stopColor="#60a5fa" stopOpacity={1}/>
+                                    <stop offset="100%" stopColor="#3b82f6" stopOpacity={1}/>
+                                </linearGradient>
+                            </defs>
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9"/>
+                            <XAxis 
+                                dataKey="name" 
+                                tick={{fontSize: 9, fontWeight: 'bold'}} 
+                                axisLine={false} 
+                                tickLine={false} 
+                                interval={0}
+                                angle={-90}
+                                textAnchor="start"
+                                height={100}
+                                tickMargin={35} 
+                            />
+                            <YAxis tickFormatter={(val) => formatNumber(val)} tick={{fontSize: 10, fontWeight: 'bold'}} axisLine={false} tickLine={false} />
+                            <Tooltip content={<CustomTooltip />} />
+                            <Legend 
+                                iconType="circle" 
+                                wrapperStyle={{fontSize: '10px', fontWeight: 'bold', paddingTop: '10px'}} 
+                                formatter={(value) => <span style={{ marginInlineStart: '5px', marginInlineEnd: '15px' }}>{value}</span>}
+                            />
+                            <Bar dataKey="Plan" fill="url(#colorPlanBar)" radius={[4, 4, 0, 0] as any} barSize={24} name="Plan" />
+                            <Bar dataKey="Actual" fill="url(#colorActualBar)" radius={[4, 4, 0, 0] as any} barSize={24} name="Achieved">
+                                <LabelList dataKey="achPct" position="top" formatter={(val: any) => `${val}%`} style={{ fontSize: '10px', fontWeight: 'bold', fill: '#3b82f6' }} />
+                            </Bar>
+                        </BarChart>
+                    </ResponsiveContainer>
+                </div>
+            </div>
 
             {/* Performance by Channel (Bar Chart) - Hidden for Salesman AND Team Leader */}
             {!isSalesman && !isTLView && (
@@ -1052,8 +1169,8 @@ export default function EVPMDashboard({ plans, achievements, onRefresh, lastUpda
                                     wrapperStyle={{fontSize: '10px', fontWeight: 'bold', paddingTop: '10px'}} 
                                     formatter={(value) => <span style={{ marginInlineStart: '5px', marginInlineEnd: '15px' }}>{value}</span>}
                                 />
-                                <Bar dataKey="Plan" fill="url(#colorPlanBar)" radius={[4, 4, 0, 0]} barSize={20} name="Plan" />
-                                <Bar dataKey="Actual" fill="url(#colorActualBar)" radius={[4, 4, 0, 0]} barSize={20} name="Achieved">
+                                <Bar dataKey="Plan" fill="url(#colorPlanBar)" radius={[4, 4, 0, 0] as any} barSize={20} name="Plan" />
+                                <Bar dataKey="Actual" fill="url(#colorActualBar)" radius={[4, 4, 0, 0] as any} barSize={20} name="Achieved">
                                     <LabelList dataKey="achPct" position="top" formatter={(val: any) => `${val}%`} style={{ fontSize: '10px', fontWeight: 'bold', fill: '#3b82f6' }} />
                                 </Bar>
                             </BarChart>
@@ -1063,7 +1180,7 @@ export default function EVPMDashboard({ plans, achievements, onRefresh, lastUpda
             )}
             
             {/* Split Row for Top 5 and Bottom 5 (PERCENTAGE BASED) */}
-            {!isRestrictedView && (
+            {!isRestrictedView && !isSMView && (
                 <div>
                     <div className="mb-4 flex justify-between items-center bg-white p-4 rounded-3xl border border-slate-100 shadow-sm">
                          <h3 className="font-black text-slate-700 text-sm flex items-center gap-2">
@@ -1338,7 +1455,7 @@ export default function EVPMDashboard({ plans, achievements, onRefresh, lastUpda
                                         dataKey="Due" 
                                         stackId="a" 
                                         fill="url(#debtDueGradient)" 
-                                        radius={debtMetric === 'Due' ? [6, 6, 0, 0] as [number, number, number, number] : [0, 0, 6, 6] as [number, number, number, number]} 
+                                        radius={debtMetric === 'Due' ? [6, 6, 0, 0] as any : [0, 0, 6, 6] as any} 
                                         barSize={24} 
                                         name="Due Amount" 
                                     />
@@ -1348,7 +1465,7 @@ export default function EVPMDashboard({ plans, achievements, onRefresh, lastUpda
                                         dataKey="Overdue" 
                                         stackId="a" 
                                         fill="url(#debtOverdueGradient)" 
-                                        radius={[6, 6, 0, 0] as [number, number, number, number]} 
+                                        radius={[6, 6, 0, 0] as any} 
                                         barSize={24} 
                                         name="Overdue Amount" 
                                     />
