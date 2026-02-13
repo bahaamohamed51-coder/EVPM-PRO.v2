@@ -1099,7 +1099,7 @@ export default function EVPMDashboard({ plans, achievements, onRefresh, lastUpda
                          <KpiFilterButtons current={salesmanKpi} onChange={setSalesmanKpi} />
                     </div>
                 </div>
-                <div className="h-[500px] w-full">
+                <div className="h-[400px] w-full">
                     <ResponsiveContainer width="100%" height="100%">
                         <BarChart data={hierarchyData} margin={{top: 20, right: 10, left: -20, bottom: 20}}>
                             <defs>
@@ -1418,7 +1418,7 @@ export default function EVPMDashboard({ plans, achievements, onRefresh, lastUpda
                         </div>
                     </div>
 
-                    <div className="h-[500px] w-full">
+                    <div className="h-[400px] w-full">
                         <ResponsiveContainer width="100%" height="100%">
                             <BarChart data={debtBreakdownData} margin={{top: 20, right: 10, left: -20, bottom: 20}}>
                                 <defs>
