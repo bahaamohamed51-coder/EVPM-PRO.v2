@@ -37,10 +37,12 @@ export interface KPIRow extends PlanRow, Omit<Partial<AchievedRow>, 'SALESMANNO'
 
 export interface User {
   username: string;
-  password?: string;
+  password?: string; // Only used when sending to server, never stored in client state after login
   jobTitle?: string;
   role: 'admin' | 'user';
   name?: string;
+  authToken?: string; // Security Token
+  scope?: any; // Defines what this user can see (e.g., { Region: 'Cairo' })
 }
 
 export interface Job {
@@ -50,4 +52,13 @@ export interface Job {
 export interface AppConfig {
   syncUrl: string;
   lastUpdated?: string;
+}
+
+export interface AppMetadata {
+  rsmList: string[];
+  smList: string[];
+  asmList: string[];
+  tlList: string[];
+  directorList: string[];
+  salesmanList: string[]; // "ID - Name"
 }
