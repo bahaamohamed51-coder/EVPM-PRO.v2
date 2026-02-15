@@ -200,12 +200,8 @@ const App: React.FC = () => {
   const formattedName = useMemo(() => {
     if (!currentUser?.name) return '';
     const rawName = currentUser.name;
-    let namePart = rawName.includes('-') ? rawName.split('-')[1].trim() : rawName;
-    const parts = namePart.split(' ').filter(Boolean);
-    if (parts.length > 2) {
-        return `${parts[0]} ${parts[1]}`;
-    }
-    return namePart;
+    // Remove ID prefix if exists (e.g. "101 - Name" -> "Name")
+    return rawName.includes('-') ? rawName.split('-')[1].trim() : rawName;
   }, [currentUser]);
 
   // Dummy Merged for Admin/Login compatibility (Not used much now)
