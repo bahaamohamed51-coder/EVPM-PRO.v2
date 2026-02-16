@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { PlanRow, AchievedRow, KPIRow } from '../types';
 import { calculateTimeGone, formatNumber, getUniqueValues, formatCurrency } from '../utils';
@@ -847,9 +848,10 @@ export default function EVPMDashboard({ plans, achievements, onRefresh, lastUpda
           acc[key].Overdue += (Number(row.Overdue) || 0);
           acc[key].Total += (Number(row["Total Debt"]) || 0);
           return acc;
-      }, {});
+      }, {} as Record<string, DebtGroup>);
 
-      const rawList = Object.values(groups).filter((item: DebtGroup) => {
+      // Explicitly cast to avoid inference as unknown[]
+      const rawList = (Object.values(groups) as DebtGroup[]).filter((item) => {
           if (debtMetric === 'Due') return item.Due > 0;
           if (debtMetric === 'Overdue') return item.Overdue > 0;
           return item.Total > 0; 
