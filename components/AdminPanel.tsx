@@ -8,7 +8,7 @@ interface Props {
   config: AppConfig;
   setConfig: (c: AppConfig) => void;
   onRefresh: () => void;
-  user: User; // Current Admin User
+  user: User; // Current Admin User with Token
 }
 
 export default function AdminPanel({ config, setConfig, onRefresh, user }: Props) {
@@ -58,33 +58,56 @@ export default function AdminPanel({ config, setConfig, onRefresh, user }: Props
         const parsedData = XLSX.utils.sheet_to_json(ws);
 
         let body: any = {};
+        
+        // Include USER object with authToken for Security Check
+        const requestPayload = {
+            user: user, // Passing current admin user with token
+            action: '',
+            rows: [] as any[],
+            users: [] as any[],
+            date: ''
+        };
+
         if (type === 'plan') {
-             body = { action: 'uploadPlan', rows: parsedData };
+             requestPayload.action = 'uploadPlan';
+             requestPayload.rows = parsedData;
         } else if (type === 'achieved') {
-             body = { action: 'uploadAchieved', rows: parsedData, date: uploadDate };
+             requestPayload.action = 'uploadAchieved';
+             requestPayload.rows = parsedData;
+             requestPayload.date = uploadDate;
         } else {
+             // Correctly map the Name field from Excel columns
              const formattedUsers = parsedData.map((u: any) => ({
                  username: u.Username || u.username,
                  password: u.Password || u.password,
-                 name: u.Username || u.username,
+                 name: u.Name || u.name || u.Username || u.username, 
                  jobTitle: 'Staff',
                  role: (u.Role || u.role) === 'admin' ? 'admin' : 'user'
              }));
-             body = { action: 'updateUsers', users: formattedUsers };
+             requestPayload.action = 'updateUsers';
+             requestPayload.users = formattedUsers;
         }
         
-        await fetch(config.syncUrl, {
+        // REMOVED 'no-cors' to allow reading the security error messages
+        const response = await fetch(config.syncUrl, {
              method: 'POST',
-             mode: 'no-cors',
-             body: JSON.stringify(body)
+             body: JSON.stringify(requestPayload)
         });
 
-        alert('Upload successful! (Please wait a moment for backend processing)');
+        if (!response.ok) throw new Error("Network Response Failed");
+        
+        const json = await response.json();
+        
+        if (json.error) {
+            throw new Error(json.error);
+        }
+
+        alert('Upload successful! Data secured on server.');
         setTimeout(onRefresh, 2000);
 
-      } catch (err) {
+      } catch (err: any) {
         console.error(err);
-        alert('Error uploading file.');
+        alert('Upload Failed: ' + (err.message || "Unknown Error"));
       } finally {
         setIsUploading(false);
         e.target.value = '';
