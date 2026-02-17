@@ -25,7 +25,7 @@ interface DebtGroup {
 }
 
 // Redesigned Time Pie Widget (Enhanced Visuals)
-const TimePieWidget = ({ selected }: { selected: { percentage: number, dateString: string } }) => {
+const TimePieWidget = React.memo(({ selected }: { selected: { percentage: number, dateString: string } }) => {
     // Ensure percentage is within bounds
     const percentage = Math.min(Math.max(selected.percentage, 0), 100);
     
@@ -119,9 +119,9 @@ const TimePieWidget = ({ selected }: { selected: { percentage: number, dateStrin
              <div className="absolute top-0 right-0 w-32 h-32 bg-blue-600/5 rounded-full blur-[40px] pointer-events-none"></div>
         </div>
     );
-};
+});
 
-const StatCard = ({ title, actual, plan, prefix = '', customBg = 'bg-white', customText = 'text-slate-800', timeGone }: any) => {
+const StatCard = React.memo(({ title, actual, plan, prefix = '', customBg = 'bg-white', customText = 'text-slate-800', timeGone }: any) => {
     const percent = plan ? (actual / plan) * 100 : 0;
     const isGSV = title.includes("GSV");
     const titleColor = isGSV ? 'text-purple-100' : 'text-blue-800'; 
@@ -203,7 +203,7 @@ const StatCard = ({ title, actual, plan, prefix = '', customBg = 'bg-white', cus
             </div>
         </div>
     );
-};
+});
 
 const CustomTooltip = ({ active, payload, label, filterType }: any) => {
     if (active && payload && payload.length) {
@@ -268,7 +268,7 @@ const CustomTooltip = ({ active, payload, label, filterType }: any) => {
 };
 
 // Reusable KPI Filter Component
-const KpiFilterButtons = ({ current, onChange }: { current: string, onChange: (val: string) => void }) => {
+const KpiFilterButtons = React.memo(({ current, onChange }: { current: string, onChange: (val: string) => void }) => {
     const options = [
         { k: 'GSV', l: 'GSV' }, { k: 'ECO', l: 'ECO' }, 
         { k: 'PC', l: 'PC' }, { k: 'LPC', l: 'LPC' }, { k: 'MVS', l: 'MVS' }
@@ -287,7 +287,7 @@ const KpiFilterButtons = ({ current, onChange }: { current: string, onChange: (v
             ))}
         </div>
     );
-};
+});
 
 // Custom Multi-Select Component
 const MultiSelectDropdown = ({ label, options, selected, onChange }: { label: string, options: string[], selected: string[], onChange: (val: string[]) => void }) => {
@@ -360,7 +360,7 @@ const MultiSelectDropdown = ({ label, options, selected, onChange }: { label: st
   );
 };
 
-export default function EVPMDashboard({ plans, achievements, onRefresh, lastUpdated, userFilters = {} }: Props) {
+const EVPMDashboard = ({ plans, achievements, onRefresh, lastUpdated, userFilters = {} }: Props) => {
   // Global Filters - Now Arrays for Multi-Select
   // If userFilters provides a string (e.g. Salesman restricted view), we wrap it in array
   const initialFilters = useMemo(() => {
@@ -643,7 +643,9 @@ export default function EVPMDashboard({ plans, achievements, onRefresh, lastUpda
       return Object.values(groups).map((item: ChannelGroup) => ({
           ...item,
           achPct: item.Plan > 0 ? Math.round((item.Actual / item.Plan) * 100) : 0
-      })).sort((a, b) => b.Plan - a.Plan);
+      }))
+      .filter(item => item.Plan > 0 || item.Actual > 0) // Filter out zero activity channels
+      .sort((a, b) => b.Plan - a.Plan);
   }, [currentViewData, channelKpi]);
 
   // --- DYNAMIC HIERARCHY LOGIC FOR SALES PERFORMANCE CHART ---
@@ -721,7 +723,9 @@ export default function EVPMDashboard({ plans, achievements, onRefresh, lastUpda
     return Object.values(groups).map((item: GroupData) => ({
         ...item,
         achPct: item.Plan > 0 ? Math.round((item.Actual / item.Plan) * 100) : 0
-    })).sort((a, b) => b.Plan - a.Plan); 
+    }))
+    .filter(item => item.Plan > 0 || item.Actual > 0) // Filter out zero activity items
+    .sort((a, b) => b.Plan - a.Plan); 
   }, [salesmanChartSource, salesmanKpi, salesDrillKey]);
 
   // Determine available options for drilling down in Sales Chart
@@ -749,6 +753,7 @@ export default function EVPMDashboard({ plans, achievements, onRefresh, lastUpda
             ...g,
             Value: g.Plan > 0 ? (g.Ach / g.Plan) * 100 : 0
         }))
+        .filter((i) => i.Plan > 0 || i.Ach > 0) // Filter out zero activity
         .sort((a, b) => b.Value - a.Value)
         .slice(0, 5);
   }, [currentViewData, distKpi]);
@@ -771,7 +776,7 @@ export default function EVPMDashboard({ plans, achievements, onRefresh, lastUpda
             ...g,
             Value: g.Plan > 0 ? (g.Ach / g.Plan) * 100 : 0
         }))
-        .filter((i) => i.Value >= 0 && i.Plan > 0)
+        .filter((i) => i.Value >= 0 && i.Plan > 0) // Strict for Bottom: must have plan
         .sort((a, b) => a.Value - b.Value)
         .slice(0, 5);
   }, [currentViewData, distKpi]);
@@ -850,8 +855,7 @@ export default function EVPMDashboard({ plans, achievements, onRefresh, lastUpda
           return acc;
       }, {} as Record<string, DebtGroup>);
 
-      // Explicitly cast to avoid inference as unknown[]
-      const rawList = (Object.values(groups) as DebtGroup[]).filter((item) => {
+      const rawList = Object.values(groups).filter((item: DebtGroup) => {
           if (debtMetric === 'Due') return item.Due > 0;
           if (debtMetric === 'Overdue') return item.Overdue > 0;
           return item.Total > 0; 
@@ -862,10 +866,10 @@ export default function EVPMDashboard({ plans, achievements, onRefresh, lastUpda
       else if (debtMetric === 'Overdue') metricKey = 'Overdue';
 
       // Fix: Direct access without casting
-      const grandTotal = rawList.reduce((sum, item) => sum + (item[metricKey] || 0), 0);
+      const grandTotal: number = rawList.reduce((sum, item) => sum + (item[metricKey] || 0), 0);
 
       return rawList
-             .map((item) => ({
+             .map((item: DebtGroup) => ({
                  ...item,
                  GlobalShare: grandTotal > 0 ? ((item[metricKey] || 0) / grandTotal) * 100 : 0
              }))
@@ -1481,4 +1485,7 @@ export default function EVPMDashboard({ plans, achievements, onRefresh, lastUpda
         </div>
     </div>
   );
-}
+};
+
+// Export memoized version
+export default React.memo(EVPMDashboard);
