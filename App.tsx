@@ -56,17 +56,31 @@ const App: React.FC = () => {
   // 1. Fetch Public Metadata (Dropdowns)
   const syncMetadata = useCallback(async (url: string) => {
     if (!url) return;
-    
-    // REMOVED 'no-cors'. Standard GAS Web App with "Anyone" access supports CORS.
-    // This allows us to read the response.
+    try {
+        const response = await fetch(url, {
+            method: 'POST',
+            mode: 'no-cors', // Note: GAS Simple trigger response limitations might require handling or using 'text'
+            // For proper JSON from GAS doPost, we usually need 'cors' if allowed, or we use a hack.
+            // Assuming standard GAS Web App setup compliant with fetch.
+            // If mode is 'no-cors', we can't read body. 
+            // FIX: We must use 'cors' or rely on standard redirect handling by GAS.
+            // Standard GAS `doPost` returns JSON.
+            body: JSON.stringify({ action: 'getMetadata' })
+        });
+        
+        // GAS Redirects...
+        if (response.type === 'opaque') {
+             // 'no-cors' prevents reading data. We need to assume the script allows CORS or we use a proxy.
+             // For this codebase, let's assume the GAS script uses ContentService which supports CORS automatically if deployed correctly as 'Me' access 'Anyone'.
+        }
+    } catch (e) { console.error(e); }
+
+    // Retrying with standard CORS expectation
     try {
         const response = await fetch(url, {
             method: 'POST',
             body: JSON.stringify({ action: 'getMetadata' })
         });
-        
-        if (!response.ok) throw new Error("Metadata Fetch Failed");
-
         const json = await response.json();
         setMetadata(json);
         localStorage.setItem('evpm_metadata', JSON.stringify(json));
@@ -81,12 +95,11 @@ const App: React.FC = () => {
     setIsSyncing(true);
     
     try {
-      // REMOVED 'no-cors' to handle 401/403 errors properly
       const response = await fetch(url, {
           method: 'POST',
           body: JSON.stringify({ 
               action: 'getData', 
-              user: user // Passing the user obj with authToken
+              user: user
           })
       });
 
@@ -95,12 +108,9 @@ const App: React.FC = () => {
       const json = await response.json();
       
       if (json.error) {
-          console.error("Server Error:", json.error);
-          if (json.error.includes("Unauthorized") || json.error.includes("Expired")) {
-               alert("Session Expired: " + json.error);
-               handleLogout();
-               return;
-          }
+          alert("Session Expired or Unauthorized: " + json.error);
+          handleLogout();
+          return;
       }
 
       if (json.plans) setPlans(json.plans);
@@ -296,3 +306,4 @@ const App: React.FC = () => {
 };
 
 export default App;
+
