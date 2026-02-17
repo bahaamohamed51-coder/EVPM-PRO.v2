@@ -232,7 +232,6 @@ const App: React.FC = () => {
               </div>
               <div className="block">
                 <h1 className="font-black text-lg md:text-xl leading-tight tracking-tight">EVPM <span className="text-blue-400">Pro</span></h1>
-                <p className="text-[10px] text-blue-200 font-bold tracking-wide -mt-0.5">Smart Visual performance</p>
               </div>
             </div>
 
